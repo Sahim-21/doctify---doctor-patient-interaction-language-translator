@@ -1,1 +1,39 @@
-
+{
+  "patient_id": "a3f7bc12-9d44-4e2a-b8c1-123456789abc",
+  "name": "Ravi Kumar",
+  "age": 34,
+  "language": "hi",
+  "symptoms": [
+    "fever",
+    "headache",
+    "body ache"
+  ],
+  "diagnosis": "Viral fever",
+  "icd10_code": "B34.9",
+  "prescription": [
+    {
+      "drug": "Paracetamol",
+      "dose": "500mg",
+      "freq": "TDS",
+      "days": 5
+    },
+    {
+      "drug": "Cetirizine",
+      "dose": "10mg",
+      "freq": "OD",
+      "days": 3
+    }
+  ],
+  "lab_tests": [
+    "CBC",
+    "CRP"
+  ],
+  "follow_up": "5 days",
+  "notes": "Patient is allergic to aspirin",
+  "created_at": "2026-03-13T10:30:00Z",
+  "status": {
+    "pharmacy": "pending",
+    "lab": "pending",
+    "diagnostics": "not_required"
+  }
+}
