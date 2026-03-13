@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+.env
+*.db
+cache/
+
+# Node
+node_modules/
+build/
+.env.local
+.env.production
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Emergent platform internals — never commit
+.emergent/
+
+# Cloned repo temp folder
+repo_temp/
+-e 
+# Environment files
+*.env
+*.env.*
+-e 
+# Environment files
+*.env
+*.env.*
