@@ -7,6 +7,7 @@ import LabPortal from "./screens/LabPortal";
 import PatientStatus from "./screens/PatientStatus";
 import LoginScreen from "./screens/LoginScreen";
 import PatientSelfRegister from "./screens/PatientSelfRegister";
+import ReceptionDashboard from "./screens/ReceptionDashboard";
 
 /* ── Global styles ───────────────────────────────────────────────────── */
 const GLOBAL_CSS = `
@@ -50,18 +51,19 @@ injectGlobalStyles();
 
 /* ── Role → allowed tabs + default screen ───────────────────────────── */
 const ALL_TABS = [
-  { key: "register", label: "Register",  icon: "＋",  desc: "New patient intake"    },
-  { key: "consult",  label: "Consult",   icon: "🎙️", desc: "Voice consultation"    },
-  { key: "doctor",   label: "Dashboard", icon: "🩺",  desc: "Clinical records"      },
-  { key: "pharmacy", label: "Pharmacy",  icon: "💊",  desc: "Dispense medications"  },
-  { key: "lab",      label: "Lab",       icon: "🔬",  desc: "Submit test results"   },
-  { key: "status",   label: "Status",    icon: "📡",  desc: "Live journey tracker"  },
+  { key: "register", label: "Register",  icon: "＋",  desc: "New patient intake"     },
+  { key: "consult",  label: "Consult",   icon: "🎙️", desc: "Voice consultation"     },
+  { key: "doctor",   label: "Dashboard", icon: "🩺",  desc: "Clinical records"       },
+  { key: "manage",   label: "Manage",    icon: "⚙️",  desc: "Billing & patient mgmt" },
+  { key: "pharmacy", label: "Pharmacy",  icon: "💊",  desc: "Dispense medications"   },
+  { key: "lab",      label: "Lab",       icon: "🔬",  desc: "Submit test results"    },
+  { key: "status",   label: "Status",    icon: "📡",  desc: "Live journey tracker"   },
 ];
 const ROLE_TABS = {
   doctor:    ["register", "consult", "doctor", "status"],
   pharmacy:  ["pharmacy", "status"],
   lab:       ["lab", "status"],
-  reception: ["register", "status"],
+  reception: ["register", "manage", "status"],
 };
 const ROLE_DEFAULT = {
   doctor:    "doctor",
@@ -306,9 +308,10 @@ export default function App() {
               {activeScreen === "doctor" && (
                 <DoctorDashboard patientId={patientId} setPatientId={setPatientId} />
               )}
-              {activeScreen === "pharmacy" && <PharmacyPortal patientId={patientId} />}
-              {activeScreen === "lab"      && <LabPortal      patientId={patientId} />}
-              {activeScreen === "status"   && <PatientStatus  patientId={patientId} />}
+              {activeScreen === "pharmacy" && <PharmacyPortal patientId={patientId} setPatientId={setPatientId} />}
+              {activeScreen === "lab"      && <LabPortal      patientId={patientId} setPatientId={setPatientId} />}
+              {activeScreen === "status"   && <PatientStatus  patientId={patientId} setPatientId={setPatientId} />}
+              {activeScreen === "manage"   && <ReceptionDashboard patientId={patientId} setPatientId={setPatientId} />}
             </div>
           </div>
         </main>

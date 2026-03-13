@@ -47,6 +47,14 @@ class Patient(Base):
     urgency_level = Column(String, default="normal")          # normal | urgent | critical
     prescription_status = Column(String, default="pending")   # pending | approved | rejected
 
+    # Billing (managed by reception)
+    billing_status = Column(String, default="unpaid")         # unpaid | paid
+    total_fee = Column(Integer, default=0)
+    billing_notes = Column(Text, default=None)
+
+    # Doctor's custom additional fields (free-form JSON key-value pairs)
+    custom_fields_json = Column(Text, default=None)
+
     def to_dict(self):
         return {
             "patient_id": self.patient_id,
@@ -68,6 +76,10 @@ class Patient(Base):
             "created_at": str(self.created_at),
             "urgency_level": self.urgency_level or "normal",
             "prescription_status": self.prescription_status or "pending",
+            "billing_status": self.billing_status or "unpaid",
+            "total_fee": self.total_fee or 0,
+            "billing_notes": self.billing_notes,
+            "custom_fields": json.loads(self.custom_fields_json) if self.custom_fields_json else {},
             "status": {
                 "pharmacy": self.pharmacy_status,
                 "lab": self.lab_status,

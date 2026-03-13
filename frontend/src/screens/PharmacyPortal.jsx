@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { getPatient, updatePharmacy } from "../api";
+import PatientDropdown from "../components/PatientDropdown";
 
 function DrugCard({ drug, dose, freq, days, checked, onToggle, dispensed }) {
   return (
@@ -123,7 +124,7 @@ function ProgressBar({ checked, total }) {
   );
 }
 
-export default function PharmacyPortal({ patientId }) {
+export default function PharmacyPortal({ patientId, setPatientId }) {
   const [patient,  setPatient]  = useState(null);
   const [searchId, setSearchId] = useState(patientId || "");
   const [checked,  setChecked]  = useState({});
@@ -195,48 +196,7 @@ export default function PharmacyPortal({ patientId }) {
 
       <div style={{ height: 1, background: "var(--border)", margin: "24px 0" }} />
 
-      {/* Search */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 28 }}>
-        <div style={{ flex: 1, position: "relative" }}>
-          <span style={{
-            position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
-            fontSize: 15, color: "var(--text-muted)", pointerEvents: "none",
-          }}>💊</span>
-          <input
-            placeholder="Enter patient ID…"
-            value={searchId}
-            onChange={e => setSearchId(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && fetchPatient(searchId)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            style={{
-              width: "100%", boxSizing: "border-box",
-              padding: "12px 14px 12px 40px",
-              borderRadius: 10,
-              border: `1.5px solid ${focused ? "var(--teal)" : "var(--border)"}`,
-              background: "var(--input-bg)",
-              color: "var(--text-primary)",
-              fontSize: 14, fontFamily: "var(--font-mono)",
-              outline: "none",
-              boxShadow: focused ? "0 0 0 3px rgba(20,184,166,0.15)" : "none",
-              transition: "border-color 0.2s, box-shadow 0.2s",
-            }}
-          />
-        </div>
-        <button
-          onClick={() => fetchPatient(searchId)}
-          disabled={loading}
-          style={{
-            padding: "12px 22px", borderRadius: 10,
-            border: "none", background: "var(--teal)",
-            color: "#fff", fontSize: 14, fontWeight: 600,
-            cursor: loading ? "not-allowed" : "pointer",
-            opacity: loading ? 0.7 : 1, flexShrink: 0,
-          }}
-        >
-          {loading ? "Loading…" : "Load Patient"}
-        </button>
-      </div>
+      <PatientDropdown patientId={patientId} setPatientId={setPatientId} />
 
       {/* Error */}
       {error && (

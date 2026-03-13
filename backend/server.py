@@ -76,6 +76,10 @@ def migrate_and_seed():
             ("follow_up_date",      "VARCHAR"),
             ("transcript",          "TEXT"),
             ("phone",               "VARCHAR"),
+            ("billing_status",      "VARCHAR DEFAULT 'unpaid'"),
+            ("total_fee",           "INTEGER DEFAULT 0"),
+            ("billing_notes",       "TEXT"),
+            ("custom_fields_json",  "TEXT"),
         ]
         for col, definition in new_cols:
             if col not in existing:
@@ -284,6 +288,8 @@ def save_record(patient_id: str, data: dict, db: Session = Depends(get_db)):
         p.notes = data["notes"] or None
     if "ambiguous_terms" in data:
         p.ambiguous_terms_json = json.dumps(data["ambiguous_terms"]) if data["ambiguous_terms"] is not None else None
+    if "custom_fields" in data:
+        p.custom_fields_json = json.dumps(data["custom_fields"]) if data["custom_fields"] is not None else None
     if "urgency_level" in data:
         p.urgency_level = data["urgency_level"] or "normal"
     if "transcript" in data:
@@ -291,6 +297,40 @@ def save_record(patient_id: str, data: dict, db: Session = Depends(get_db)):
 
     db.commit()
     return {"message": "Record saved"}
+
+
+@app.delete("/api/patients/{patient_id}")
+def delete_patient(patient_id: str, db: Session = Depends(get_db)):
+    p = db.query(models.Patient).filter(models.Patient.patient_id == patient_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    name = p.name
+    db.delete(p)
+    db.commit()
+    return {"message": f"Patient '{name}' deleted"}
+
+
+@app.delete("/api/patients")
+def delete_all_patients(db: Session = Depends(get_db)):
+    count = db.query(models.Patient).count()
+    db.query(models.Patient).delete()
+    db.commit()
+    return {"message": f"Deleted {count} patient(s)"}
+
+
+@app.put("/api/patients/{patient_id}/billing")
+def update_billing(patient_id: str, data: dict, db: Session = Depends(get_db)):
+    p = db.query(models.Patient).filter(models.Patient.patient_id == patient_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    if "billing_status" in data:
+        p.billing_status = data["billing_status"]
+    if "total_fee" in data:
+        p.total_fee = int(data.get("total_fee") or 0)
+    if "billing_notes" in data:
+        p.billing_notes = data["billing_notes"] or None
+    db.commit()
+    return {"message": "Billing updated"}
 
 
 # ── URGENCY ───────────────────────────────────

@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import {
-  listPatients, getPatient, saveRecord,
+  getPatient, saveRecord,
   updateUrgency, approvePrescription, rejectPrescription,
 } from "../api";
 import { UrgencyBadge } from "../App";
+import PatientDropdown from "../components/PatientDropdown";
 
 // ── Helpers ──────────────────────────────────
 
@@ -351,25 +352,141 @@ function Divider({ label }) {
   );
 }
 
+// ── Lab Tests Editor ──────────────────────────
+
+function LabTestsEditor({ tests, patientId, onSaved }) {
+  const [draft, setDraft]     = useState(tests ? [...tests] : []);
+  const [newTest, setNewTest] = useState("");
+  const [saving, setSaving]   = useState(false);
+
+  const add = () => {
+    const t = newTest.trim();
+    if (!t || draft.includes(t)) return;
+    setDraft(d => [...d, t]);
+    setNewTest("");
+  };
+
+  const remove = (i) => setDraft(d => d.filter((_, idx) => idx !== i));
+
+  const save = async () => {
+    setSaving(true);
+    try { await saveRecord(patientId, { lab_tests: draft }); onSaved(); }
+    catch (e) { console.error(e); }
+    setSaving(false);
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+        {draft.length === 0 && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No tests ordered yet.</span>}
+        {draft.map((t, i) => (
+          <span key={i} style={{
+            display: "inline-flex", alignItems: "center", gap: 5,
+            padding: "4px 10px", borderRadius: 99, fontSize: 12,
+            background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa", fontWeight: 500,
+          }}>
+            {t}
+            <button onClick={() => remove(i)} style={{ background: "none", border: "none", color: "#60a5fa", cursor: "pointer", padding: 0, fontSize: 12, lineHeight: 1 }}>✕</button>
+          </span>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          value={newTest}
+          onChange={e => setNewTest(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && add()}
+          placeholder="e.g. CBC, HbA1c, ECG…"
+          style={{ ...inputSt, flex: 1 }}
+        />
+        <button onClick={add} style={saveBtnSt}>+ Add</button>
+        <button onClick={save} disabled={saving} style={{ ...saveBtnSt, background: "var(--teal-dim)" }}>
+          {saving ? "…" : "Save Tests"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Custom Fields Editor ───────────────────────
+
+function CustomFieldsEditor({ fields, patientId, onSaved }) {
+  const [draft, setDraft]   = useState(fields && Object.keys(fields).length ? { ...fields } : {});
+  const [newKey, setNewKey] = useState("");
+  const [newVal, setNewVal] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const QUICK = ["Blood Group", "Allergies", "Family History", "Chief Complaint", "Past History", "Weight (kg)"];
+
+  const addField = (key = newKey, val = newVal) => {
+    const k = key.trim(); const v = val.trim();
+    if (!k) return;
+    setDraft(d => ({ ...d, [k]: v || "" }));
+    setNewKey(""); setNewVal("");
+  };
+
+  const removeField = (key) => setDraft(d => { const n = { ...d }; delete n[key]; return n; });
+  const updateVal = (key, val) => setDraft(d => ({ ...d, [key]: val }));
+
+  const save = async () => {
+    setSaving(true);
+    try { await saveRecord(patientId, { custom_fields: draft }); onSaved(); }
+    catch (e) { console.error(e); }
+    setSaving(false);
+  };
+
+  const QUICK_REMAINING = QUICK.filter(q => !Object.keys(draft).includes(q));
+
+  return (
+    <div>
+      {/* Quick add buttons */}
+      {QUICK_REMAINING.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+          {QUICK_REMAINING.map(q => (
+            <button key={q} onClick={() => addField(q, "")} style={{
+              padding: "4px 10px", borderRadius: 99, fontSize: 11, fontWeight: 600,
+              border: "1px dashed var(--border)", background: "transparent",
+              color: "var(--text-muted)", cursor: "pointer",
+            }}>+ {q}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Existing fields */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+        {Object.entries(draft).map(([key, val]) => (
+          <div key={key} style={{ display: "grid", gridTemplateColumns: "1fr 2fr 28px", gap: 8, alignItems: "center" }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)" }}>{key}</div>
+            <input value={val} onChange={e => updateVal(key, e.target.value)} style={{ ...inputSt, fontSize: 12 }} placeholder="Value…" />
+            <button onClick={() => removeField(key)} style={{ ...iconBtnStyle, color: "#ef4444", fontSize: 15, padding: "2px" }}>✕</button>
+          </div>
+        ))}
+      </div>
+
+      {/* Add custom field */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: 8, marginBottom: 10 }}>
+        <input value={newKey} onChange={e => setNewKey(e.target.value)} placeholder="Field name" style={{ ...inputSt, fontSize: 12 }} />
+        <input value={newVal} onChange={e => setNewVal(e.target.value)} placeholder="Value" style={{ ...inputSt, fontSize: 12 }} onKeyDown={e => e.key === "Enter" && addField()} />
+        <button onClick={() => addField()} style={saveBtnSt}>+ Add</button>
+      </div>
+
+      <button onClick={save} disabled={saving} style={{ ...saveBtnSt }}>
+        {saving ? "Saving…" : "Save Additional Info"}
+      </button>
+    </div>
+  );
+}
+
 // ── Main Dashboard ────────────────────────────
 
 export default function DoctorDashboard({ patientId, setPatientId }) {
-  const [patients, setPatients]   = useState([]);
+  const [patients, setPatients]   = useState([]);   // unused, kept for compat
   const [selectedId, setSelectedId] = useState(patientId || "");
   const [patient, setPatient]     = useState(null);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState("");
   const [urgencyChanging, setUrgencyChanging] = useState(false);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  // Fetch patient list for dropdown
-  useEffect(() => {
-    listPatients()
-      .then(setPatients)
-      .catch(() => {});
-  }, []);
-
-  // Load patient when selectedId changes
+  // Fetch patient when selectedId changes
   useEffect(() => {
     if (!selectedId) return;
     setLoading(true); setError("");
@@ -385,7 +502,6 @@ export default function DoctorDashboard({ patientId, setPatientId }) {
     try {
       await updateUrgency(patient.patient_id, level);
       setPatient(p => ({ ...p, urgency_level: level }));
-      setPatients(ps => ps.map(p => p.patient_id === selectedId ? { ...p, urgency_level: level } : p));
     } catch (e) { setError(e.message); }
     setUrgencyChanging(false);
   };
@@ -393,7 +509,6 @@ export default function DoctorDashboard({ patientId, setPatientId }) {
   const refreshPatient = () => {
     if (!selectedId) return;
     getPatient(selectedId).then(setPatient).catch(() => {});
-    listPatients().then(setPatients).catch(() => {});
   };
 
   const handleSaveNullField = async (field, value) => {
@@ -422,85 +537,7 @@ export default function DoctorDashboard({ patientId, setPatientId }) {
       <div style={{ height: 1, background: "var(--border)", margin: "24px 0" }} />
 
       {/* Patient Dropdown */}
-      <div style={{ marginBottom: 28 }}>
-        <label style={{ ...labelSt, marginBottom: 8 }}>Select Patient</label>
-        <div style={{ position: "relative" }}>
-          <button
-            data-testid="patient-dropdown-btn"
-            onClick={() => setDropdownOpen(o => !o)}
-            style={{
-              width: "100%", padding: "12px 16px", borderRadius: 10,
-              border: `1.5px solid ${dropdownOpen ? "var(--teal)" : "var(--border)"}`,
-              background: "var(--input-bg)", color: "var(--text-primary)",
-              fontSize: 14, cursor: "pointer", textAlign: "left",
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              boxShadow: dropdownOpen ? "0 0 0 3px rgba(20,184,166,0.15)" : "none",
-              transition: "border-color 0.2s, box-shadow 0.2s",
-            }}
-          >
-            {selectedId && patient ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <UrgencyBadge level={patient.urgency_level} />
-                <span style={{ fontWeight: 600 }}>{patient.name}</span>
-                <span style={{ color: "var(--text-muted)", fontSize: 12 }}>· Age {patient.age} · {LANGUAGES[patient.language] || patient.language}</span>
-              </div>
-            ) : (
-              <span style={{ color: "var(--text-muted)" }}>— Choose a patient —</span>
-            )}
-            <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{dropdownOpen ? "▲" : "▼"}</span>
-          </button>
-
-          {dropdownOpen && (
-            <div style={{
-              position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 100,
-              background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12,
-              boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
-              maxHeight: 320, overflowY: "auto",
-            }}>
-              {patients.length === 0 ? (
-                <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
-                  No patients registered yet.
-                </div>
-              ) : (
-                patients.map(p => (
-                  <button
-                    key={p.patient_id}
-                    data-testid={`patient-option-${p.patient_id.slice(0, 8)}`}
-                    onClick={() => { setSelectedId(p.patient_id); setDropdownOpen(false); }}
-                    style={{
-                      width: "100%", padding: "12px 16px", border: "none",
-                      background: selectedId === p.patient_id ? "rgba(20,184,166,0.08)" : "transparent",
-                      color: "var(--text-primary)", cursor: "pointer",
-                      display: "flex", alignItems: "center", gap: 10,
-                      borderBottom: "1px solid var(--border)",
-                      transition: "background 0.1s",
-                    }}
-                    onMouseEnter={e => { if (selectedId !== p.patient_id) e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
-                    onMouseLeave={e => { if (selectedId !== p.patient_id) e.currentTarget.style.background = "transparent"; }}
-                  >
-                    <UrgencyBadge level={p.urgency_level} />
-                    <div style={{ flex: 1, textAlign: "left" }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
-                        Age {p.age} · {LANGUAGES[p.language] || p.language}
-                        {p.diagnosis && <span> · {p.diagnosis}</span>}
-                      </div>
-                    </div>
-                    <div style={{
-                      fontSize: 10, padding: "2px 8px", borderRadius: 99, fontWeight: 700,
-                      background: PRESC_STATUS_STYLE[p.prescription_status]?.bg,
-                      color: PRESC_STATUS_STYLE[p.prescription_status]?.color,
-                      border: `1px solid ${PRESC_STATUS_STYLE[p.prescription_status]?.border}`,
-                    }}>
-                      {(p.prescription_status || "pending").toUpperCase()}
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+      <PatientDropdown patientId={selectedId || patientId} setPatientId={(id) => { setSelectedId(id); if (setPatientId) setPatientId(id); }} refresh={0} />
 
       {loading && (
         <div style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
@@ -625,21 +662,13 @@ export default function DoctorDashboard({ patientId, setPatientId }) {
               </>
             )}
 
-            {/* Lab tests */}
-            {(patient.lab_tests?.length > 0) && (
-              <>
-                <Divider label="Lab Tests Ordered" />
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {patient.lab_tests.map((t, i) => (
-                    <span key={i} style={{
-                      padding: "4px 10px", borderRadius: 99, fontSize: 12,
-                      background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)",
-                      color: "#60a5fa", fontWeight: 500,
-                    }}>{t}</span>
-                  ))}
-                </div>
-              </>
-            )}
+            {/* Lab tests ordered — with editor */}
+            <Divider label="Lab Tests Ordered" />
+            <LabTestsEditor
+              tests={patient.lab_tests}
+              patientId={patient.patient_id}
+              onSaved={refreshPatient}
+            />
 
             {/* Notes */}
             <Divider label="Notes" />
@@ -665,6 +694,19 @@ export default function DoctorDashboard({ patientId, setPatientId }) {
                 </div>
               </>
             )}
+          </div>
+
+          {/* Additional Info (doctor's custom fields) */}
+          <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 14, padding: "20px 24px", marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 14 }}>
+              Additional Info
+              <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>— any field not in the AI schema</span>
+            </div>
+            <CustomFieldsEditor
+              fields={patient.custom_fields}
+              patientId={patient.patient_id}
+              onSaved={refreshPatient}
+            />
           </div>
 
           {/* Prescription */}

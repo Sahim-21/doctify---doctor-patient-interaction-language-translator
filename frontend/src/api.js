@@ -99,6 +99,22 @@ export async function rejectPrescription(patientId, reason = "") {
   }));
 }
 
+export async function deletePatient(patientId) {
+  return handleResponse(await fetch(`${BASE}/api/patients/${patientId}`, { method: "DELETE" }));
+}
+
+export async function deleteAllPatients() {
+  return handleResponse(await fetch(`${BASE}/api/patients`, { method: "DELETE" }));
+}
+
+export async function updateBilling(patientId, data) {
+  return handleResponse(await fetch(`${BASE}/api/patients/${patientId}/billing`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }));
+}
+
 // ── Pharmacy / Lab ────────────────────────────
 
 export async function updatePharmacy(patientId, status) {
