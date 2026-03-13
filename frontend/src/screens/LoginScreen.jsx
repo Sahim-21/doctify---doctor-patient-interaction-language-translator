@@ -8,7 +8,7 @@ const ROLE_HINTS = [
   { role: "reception", username: "reception", label: "Reception",  color: "#f59e0b", icon: "🏥" },
 ];
 
-export default function LoginScreen({ onLogin }) {
+export default function LoginScreen({ onLogin, onPatientRegister }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -188,6 +188,29 @@ export default function LoginScreen({ onLogin }) {
             doctor / doctor123 &nbsp;·&nbsp; pharmacy / pharmacy123<br />
             lab / lab123 &nbsp;·&nbsp; reception / reception123
           </div>
+        </div>
+
+        {/* Patient self-registration link */}
+        <div style={{ textAlign: "center", marginTop: 16 }}>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 8 }}>Are you a patient?</div>
+          <button
+            data-testid="patient-portal-btn"
+            onClick={onPatientRegister}
+            style={{
+              padding: "11px 24px", borderRadius: 10,
+              border: "1.5px solid var(--border)",
+              background: "var(--card)",
+              color: "var(--text-secondary)",
+              fontSize: 13, fontWeight: 600, cursor: "pointer",
+              display: "inline-flex", alignItems: "center", gap: 8,
+              transition: "all 0.2s",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--teal)"; e.currentTarget.style.color = "var(--teal)"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-secondary)"; }}
+          >
+            <span>🏥</span> Register as a New Patient →
+          </button>
         </div>
       </div>
     </div>

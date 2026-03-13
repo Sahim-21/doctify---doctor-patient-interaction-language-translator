@@ -75,6 +75,7 @@ def migrate_and_seed():
             ("prescription_status", "VARCHAR DEFAULT 'pending'"),
             ("follow_up_date",      "VARCHAR"),
             ("transcript",          "TEXT"),
+            ("phone",               "VARCHAR"),
         ]
         for col, definition in new_cols:
             if col not in existing:
@@ -126,6 +127,7 @@ def register_patient(data: dict, db: Session = Depends(get_db)):
         name=data["name"],
         age=int(data["age"]),
         language=data.get("language", "hi"),
+        phone=data.get("phone") or None,
         urgency_level="normal",
         prescription_status="pending",
     )

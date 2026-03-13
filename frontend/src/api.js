@@ -20,11 +20,11 @@ export async function login(username, password) {
 
 // ── Patients ──────────────────────────────────
 
-export async function registerPatient(name, age, language) {
+export async function registerPatient(name, age, language, phone) {
   return handleResponse(await fetch(`${BASE}/api/patients/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, age, language }),
+    body: JSON.stringify({ name, age, language, phone }),
   }));
 }
 

@@ -6,6 +6,7 @@ import PharmacyPortal from "./screens/PharmacyPortal";
 import LabPortal from "./screens/LabPortal";
 import PatientStatus from "./screens/PatientStatus";
 import LoginScreen from "./screens/LoginScreen";
+import PatientSelfRegister from "./screens/PatientSelfRegister";
 
 /* ── Global styles ───────────────────────────────────────────────────── */
 const GLOBAL_CSS = `
@@ -248,8 +249,9 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem("doctify_user")); }
     catch { return null; }
   });
-  const [screen, setScreen]     = useState(null);
+  const [screen, setScreen]       = useState(null);
   const [patientId, setPatientId] = useState(null);
+  const [showPatientPortal, setShowPatientPortal] = useState(false);
 
   const handleLogin = (user) => {
     localStorage.setItem("doctify_user", JSON.stringify(user));
@@ -264,7 +266,8 @@ export default function App() {
     setPatientId(null);
   };
 
-  if (!currentUser) return <LoginScreen onLogin={handleLogin} />;
+  if (showPatientPortal) return <PatientSelfRegister onBack={() => setShowPatientPortal(false)} />;
+  if (!currentUser) return <LoginScreen onLogin={handleLogin} onPatientRegister={() => setShowPatientPortal(true)} />;
 
   const allowedKeys = ROLE_TABS[currentUser.role] || Object.keys(ROLE_TABS.doctor);
   const visibleTabs = ALL_TABS.filter(t => allowedKeys.includes(t.key));

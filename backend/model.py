@@ -20,6 +20,7 @@ class Patient(Base):
     name = Column(String, nullable=False)
     age = Column(Integer, nullable=False)
     language = Column(String, default="hi")
+    phone = Column(String, default=None)     # optional contact number
 
     # Clinical fields — nullable so AI skips unmentioned fields
     symptoms_json = Column(Text, default=None)
@@ -52,6 +53,7 @@ class Patient(Base):
             "name": self.name,
             "age": self.age,
             "language": self.language,
+            "phone": self.phone,
             "symptoms": json.loads(self.symptoms_json) if self.symptoms_json else None,
             "diagnosis": self.diagnosis,
             "secondary_diagnoses": json.loads(self.secondary_diagnoses_json) if self.secondary_diagnoses_json else None,
