@@ -47,7 +47,16 @@ Resolves colloquial terms: sugar→Diabetes(E11), BP→Hypertension(I10), body h
 - `SARVAM_API_KEY` — Sarvam AI for STT and translation
 - `REACT_APP_BACKEND_URL` — Frontend API base URL
 
-### Integration Issues Found & Fixed (2026-03-13)
+### Integration Issues Found & Fixed (2026-03-13 — Session 2)
+1. ❌→✅ Sarvam STT model `saarika:v2` deprecated → updated to `saarika:v2.5`
+2. ❌→✅ Browser records WebM but was labelled as `audio/wav` → real WAV conversion via AudioContext (16kHz mono PCM)
+3. ❌→✅ Language not passed to STT/LLM calls → fetches patient language and passes to both APIs
+4. ✅ Role-based login (Doctor / Pharmacy / Lab / Reception) with seeded default users
+5. ✅ Patient dropdown for Doctor Dashboard (sorted critical→urgent→normal)
+6. ✅ Urgency flag (auto-detect from AI notes + manual doctor override)
+7. ✅ Prescription edit/approve/reject workflow with follow-up date
+8. ✅ Null fields editable inline by doctor (NullableField component)
+9. ✅ DB schema migration (ALTER TABLE adds new columns without data loss)
 1. ❌→✅ `backend/main.py` had MOCK data in both AI endpoints — replaced with real `transcribe_audio_real()` + `extract_medical_record_real()` calls
 2. ❌→✅ `api.js` had hardcoded `localhost:8000` — updated to use `REACT_APP_BACKEND_URL`
 3. ❌→✅ Backend file renamed `main.py` → `server.py` (Emergent requirement)
