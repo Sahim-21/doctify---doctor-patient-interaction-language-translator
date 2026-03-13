@@ -1,5 +1,59 @@
-import { useState, useRef } from "react";
-import { transcribeAudio, analyzeConsultation, saveRecord } from "../api";
+import { useState, useRef, useEffect } from "react";
+import { transcribeAudio, analyzeConsultation, saveRecord, getPatient } from "../api";
+
+/**
+ * Convert any browser-recorded audio blob (webm/ogg) to a proper 16kHz mono WAV.
+ * Sarvam STT requires real PCM WAV — not a webm blob labelled as wav.
+ */
+async function blobToWav(inputBlob) {
+  const arrayBuffer = await inputBlob.arrayBuffer();
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  let audioBuffer;
+  try {
+    audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  } catch (e) {
+    await audioCtx.close();
+    throw new Error("Could not decode audio. Please try again.");
+  }
+  await audioCtx.close();
+
+  // Downsample to 16 kHz mono (optimal for STT APIs)
+  const TARGET_RATE = 16000;
+  const srcRate = audioBuffer.sampleRate;
+  const srcData = audioBuffer.getChannelData(0); // mono: use first channel
+  const ratio   = srcRate / TARGET_RATE;
+  const numOut  = Math.round(srcData.length / ratio);
+  const samples = new Float32Array(numOut);
+  for (let i = 0; i < numOut; i++) {
+    const srcIdx = Math.min(Math.round(i * ratio), srcData.length - 1);
+    samples[i] = srcData[srcIdx];
+  }
+
+  const bytesPerSample = 2;
+  const dataLength = numOut * bytesPerSample;
+  const wav = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(wav);
+  const w4 = (o, s) => { for (let i = 0; i < 4; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+
+  w4(0, "RIFF"); view.setUint32(4, 36 + dataLength, true);
+  w4(8, "WAVE"); w4(12, "fmt ");
+  view.setUint32(16, 16, true);          // chunk size
+  view.setUint16(20, 1, true);           // PCM
+  view.setUint16(22, 1, true);           // mono
+  view.setUint32(24, TARGET_RATE, true);
+  view.setUint32(28, TARGET_RATE * bytesPerSample, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, 16, true);          // 16-bit
+  w4(36, "data"); view.setUint32(40, dataLength, true);
+
+  let offset = 44;
+  for (let i = 0; i < numOut; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    offset += 2;
+  }
+  return new Blob([wav], { type: "audio/wav" });
+}
 
 const STEPS = [
   { key: "idle",         label: "Ready",       icon: "🎙️" },
@@ -101,22 +155,39 @@ function RecordButton({ recording, disabled, onClick }) {
 }
 
 export default function VoiceConsultation({ patientId, onDone }) {
-  const [step, setStep]           = useState("idle");
+  const [step, setStep]             = useState("idle");
   const [transcript, setTranscript] = useState("");
-  const [record, setRecord]       = useState(null);
-  const [error, setError]         = useState("");
-  const [elapsed, setElapsed]     = useState(0);
+  const [record, setRecord]         = useState(null);
+  const [error, setError]           = useState("");
+  const [elapsed, setElapsed]       = useState(0);
+  const [patientLang, setPatientLang] = useState("hi");   // fetched from DB
 
-  const mediaRef    = useRef(null);
-  const chunksRef   = useRef([]);
-  const timerRef    = useRef(null);
+  const mediaRef  = useRef(null);
+  const chunksRef = useRef([]);
+  const timerRef  = useRef(null);
+
+  // Fetch patient language on mount so transcription uses the right locale
+  useEffect(() => {
+    if (!patientId) return;
+    getPatient(patientId)
+      .then(p => p?.language && setPatientLang(p.language))
+      .catch(() => {});
+  }, [patientId]);
 
   /* ── Recording ── */
   const startRecording = async () => {
     setError("");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRef.current  = new MediaRecorder(stream);
+      // Use webm if available (Chrome default) — blobToWav handles conversion
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/ogg")
+        ? "audio/ogg"
+        : "";
+      mediaRef.current  = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
       chunksRef.current = [];
       mediaRef.current.ondataavailable = e => chunksRef.current.push(e.data);
       mediaRef.current.onstop = handleAudioReady;
@@ -137,10 +208,19 @@ export default function VoiceConsultation({ patientId, onDone }) {
   };
 
   const handleAudioReady = async () => {
-    const blob = new Blob(chunksRef.current, { type: "audio/wav" });
+    const rawBlob = new Blob(chunksRef.current, { type: chunksRef.current[0]?.type || "audio/webm" });
+    setStep("transcribing");
     try {
-      const result = await transcribeAudio(blob, patientId);
-      setTranscript(result.transcript);
+      // Convert to real 16kHz WAV — fixes Sarvam STT rejecting webm/ogg blobs
+      let wavBlob;
+      try {
+        wavBlob = await blobToWav(rawBlob);
+      } catch (convErr) {
+        console.warn("WAV conversion failed, sending raw audio:", convErr);
+        wavBlob = rawBlob;
+      }
+      const result = await transcribeAudio(wavBlob, patientId, patientLang);
+      setTranscript(result.transcript || "");
       setStep("reviewing");
     } catch (e) {
       setError(e.message || "Transcription failed. Check if backend is running.");
@@ -153,8 +233,8 @@ export default function VoiceConsultation({ patientId, onDone }) {
     setStep("analyzing");
     setError("");
     try {
-      const medicalRecord = await analyzeConsultation(transcript, patientId);
-      await saveRecord(patientId, medicalRecord);
+      const medicalRecord = await analyzeConsultation(transcript, patientId, patientLang);
+      await saveRecord(patientId, { ...medicalRecord, transcript });
       setRecord(medicalRecord);
       setStep("done");
     } catch (e) {

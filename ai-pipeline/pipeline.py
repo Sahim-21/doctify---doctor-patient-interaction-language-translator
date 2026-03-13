@@ -37,7 +37,7 @@ def transcribe_with_sarvam(audio_bytes: bytes, language_code: str) -> str:
         "https://api.sarvam.ai/speech-to-text",
         headers={"api-subscription-key": SARVAM_KEY},
         files={"file": ("audio.wav", audio_bytes, "audio/wav")},
-        data={"language_code": sarvam_lang, "model": "saarika:v2", "with_timestamps": False}
+        data={"language_code": sarvam_lang, "model": "saarika:v2.5", "with_timestamps": False}
     )
     if response.status_code != 200:
         print(f"[STT] Error {response.status_code}: {response.text}")

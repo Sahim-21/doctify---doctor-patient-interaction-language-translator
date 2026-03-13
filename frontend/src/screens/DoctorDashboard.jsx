@@ -1,270 +1,708 @@
 import { useState, useEffect } from "react";
-import { getPatient } from "../api";
+import {
+  listPatients, getPatient, saveRecord,
+  updateUrgency, approvePrescription, rejectPrescription,
+} from "../api";
+import { UrgencyBadge } from "../App";
 
-const STATUS_CONFIG = {
-  pending:       { color: "#f59e0b", bg: "rgba(245,158,11,0.1)",  border: "rgba(245,158,11,0.3)",  label: "Pending" },
-  dispensed:     { color: "#10b981", bg: "rgba(16,185,129,0.1)",  border: "rgba(16,185,129,0.3)",  label: "Dispensed" },
-  results_ready: { color: "#10b981", bg: "rgba(16,185,129,0.1)",  border: "rgba(16,185,129,0.3)",  label: "Results Ready" },
-  not_required:  { color: "#6b7280", bg: "rgba(107,114,128,0.1)", border: "rgba(107,114,128,0.3)", label: "Not Required" },
+// ── Helpers ──────────────────────────────────
+
+const URGENCY_LEVELS = [
+  { value: "normal",   label: "Normal",   color: "#10b981" },
+  { value: "urgent",   label: "Urgent",   color: "#f59e0b" },
+  { value: "critical", label: "Critical", color: "#ef4444" },
+];
+const LANGUAGES = { hi: "Hindi", ta: "Tamil", kn: "Kannada", te: "Telugu", ml: "Malayalam", en: "English" };
+
+const PRESC_STATUS_STYLE = {
+  pending:  { bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.3)", color: "#f59e0b", label: "Pending Approval" },
+  approved: { bg: "rgba(16,185,129,0.1)",  border: "rgba(16,185,129,0.3)", color: "#10b981", label: "Approved"         },
+  rejected: { bg: "rgba(239,68,68,0.1)",   border: "rgba(239,68,68,0.3)", color: "#ef4444",  label: "Rejected"         },
 };
 
-const LANG_LABELS = { hi: "Hindi", ta: "Tamil", kn: "Kannada", te: "Telugu", ml: "Malayalam" };
+// ── Editable field for null values ───────────
 
-function StatusPill({ value }) {
-  const cfg = STATUS_CONFIG[value] || { color: "#6b7280", bg: "rgba(107,114,128,0.1)", border: "rgba(107,114,128,0.3)", label: value || "Unknown" };
-  return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 6,
-      padding: "4px 12px", borderRadius: 20,
-      fontSize: 12, fontWeight: 600,
-      color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.border}`,
-    }}>
-      <span style={{ width: 6, height: 6, borderRadius: "50%", background: cfg.color, display: "inline-block" }} />
-      {cfg.label}
-    </span>
-  );
-}
+function NullableField({ label, value, onSave, multiline = false }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value || "");
 
-function SectionCard({ icon, title, children, accent }) {
-  return (
-    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 14, overflow: "hidden" }}>
-      <div style={{
-        display: "flex", alignItems: "center", gap: 10,
-        padding: "14px 20px", borderBottom: "1px solid var(--border)",
-        background: "var(--card-elevated)",
-      }}>
-        <span style={{ fontSize: 16 }}>{icon}</span>
-        <span style={{
-          fontSize: 12, fontWeight: 700, textTransform: "uppercase",
-          letterSpacing: "0.08em", color: accent ? "var(--teal)" : "var(--text-secondary)",
-        }}>{title}</span>
-      </div>
-      <div style={{ padding: "18px 20px" }}>{children}</div>
-    </div>
-  );
-}
-
-function InfoRow({ label, value, mono, highlight }) {
-  return (
-    <div style={{ display: "flex", gap: 0, padding: "9px 0", borderBottom: "1px solid var(--border)", alignItems: "flex-start" }}>
-      <span style={{ minWidth: 140, fontSize: 12, color: "var(--text-muted)", paddingTop: 1, flexShrink: 0 }}>{label}</span>
-      <span style={{
-        fontSize: 14, color: highlight ? "var(--teal)" : "var(--text-primary)",
-        fontWeight: highlight ? 600 : 400,
-        fontFamily: mono ? "var(--font-mono)" : "inherit", lineHeight: 1.5,
-      }}>{value || "—"}</span>
-    </div>
-  );
-}
-
-function EmptyState({ icon, message }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "48px 0", color: "var(--text-muted)" }}>
-      <span style={{ fontSize: 48, opacity: 0.4 }}>{icon}</span>
-      <span style={{ fontSize: 14 }}>{message}</span>
-    </div>
-  );
-}
-
-export default function DoctorDashboard({ patientId }) {
-  const [patient, setPatient]   = useState(null);
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState("");
-  const [searchId, setSearchId] = useState(patientId || "");
-  const [focused, setFocused]   = useState(false);
-
-  const fetchPatient = async (id) => {
-    if (!id?.trim()) return;
-    setLoading(true); setError(""); setPatient(null);
-    try {
-      const data = await getPatient(id.trim());
-      setPatient(data);
-    } catch (e) {
-      setError(e.message || "Patient not found.");
-    }
-    setLoading(false);
+  const commit = () => {
+    onSave(draft.trim() || null);
+    setEditing(false);
   };
 
+  if (value && !editing) {
+    return (
+      <div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>{label}</div>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+          <span style={{ fontSize: 14, color: "var(--text-primary)", flex: 1 }}>{value}</span>
+          <button onClick={() => { setDraft(value); setEditing(true); }} style={iconBtnStyle} title="Edit">✏️</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (editing) {
+    return (
+      <div>
+        <div style={{ fontSize: 11, color: "var(--teal)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>{label}</div>
+        {multiline ? (
+          <textarea
+            autoFocus
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            rows={3}
+            style={{ ...inputSt, width: "100%", resize: "vertical", boxSizing: "border-box" }}
+          />
+        ) : (
+          <input autoFocus value={draft} onChange={e => setDraft(e.target.value)} style={{ ...inputSt, width: "100%", boxSizing: "border-box" }} onKeyDown={e => e.key === "Enter" && commit()} />
+        )}
+        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          <button onClick={commit} style={saveBtnSt}>Save</button>
+          <button onClick={() => setEditing(false)} style={cancelBtnSt}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
+
+  // Null state
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>{label}</div>
+      <button onClick={() => setEditing(true)} style={{
+        display: "flex", alignItems: "center", gap: 6, padding: "5px 10px",
+        borderRadius: 6, border: "1px dashed var(--border)", background: "transparent",
+        color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
+      }}>
+        <span style={{ fontSize: 14 }}>+</span> Add {label}
+      </button>
+    </div>
+  );
+}
+
+// ── Prescription editor ───────────────────────
+
+function PrescriptionEditor({ prescription, patientId, prescStatus, followUp, followUpDate, onSaved }) {
+  const [rows, setRows]         = useState(() => prescription ? [...prescription] : []);
+  const [editMode, setEditMode] = useState(false);
+  const [draft, setDraft]       = useState([]);
+  const [fuText, setFuText]     = useState(followUp || "");
+  const [fuDate, setFuDate]     = useState(followUpDate || "");
+  const [saving, setSaving]     = useState(false);
+  const [error, setError]       = useState("");
+  const [rejectReason, setRejectReason] = useState("");
+  const [showReject, setShowReject]     = useState(false);
+
+  const statusCfg = PRESC_STATUS_STYLE[prescStatus] || PRESC_STATUS_STYLE.pending;
+
+  const startEdit = () => {
+    setDraft(rows.length ? rows.map(r => ({ ...r })) : [{ drug: "", dose: "", freq: "", days: 1 }]);
+    setEditMode(true);
+  };
+
+  const addRow = () => setDraft(d => [...d, { drug: "", dose: "", freq: "", days: 1 }]);
+  const delRow = (i) => setDraft(d => d.filter((_, idx) => idx !== i));
+  const setCell = (i, key, val) => setDraft(d => d.map((r, idx) => idx === i ? { ...r, [key]: val } : r));
+
+  const handleApprove = async () => {
+    setSaving(true); setError("");
+    const finalRows = editMode ? draft.filter(r => r.drug.trim()) : rows;
+    try {
+      await approvePrescription(patientId, finalRows, fuText || null, fuDate || null);
+      setRows(finalRows);
+      setEditMode(false);
+      onSaved();
+    } catch (e) { setError(e.message); }
+    setSaving(false);
+  };
+
+  const handleReject = async () => {
+    setSaving(true); setError("");
+    try {
+      await rejectPrescription(patientId, rejectReason);
+      setShowReject(false);
+      onSaved();
+    } catch (e) { setError(e.message); }
+    setSaving(false);
+  };
+
+  const handleSaveEdit = async () => {
+    setSaving(true); setError("");
+    const finalRows = draft.filter(r => r.drug.trim());
+    try {
+      await saveRecord(patientId, { prescription: finalRows });
+      setRows(finalRows);
+      setEditMode(false);
+      onSaved();
+    } catch (e) { setError(e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div>
+      {/* Status banner */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Prescription</span>
+          <span style={{
+            padding: "2px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700,
+            background: statusCfg.bg, border: `1px solid ${statusCfg.border}`, color: statusCfg.color,
+          }}>
+            {statusCfg.label}
+          </span>
+        </div>
+        {!editMode && prescStatus !== "approved" && (
+          <button onClick={startEdit} style={iconBtnStyle} title="Edit prescription">✏️ Edit</button>
+        )}
+      </div>
+
+      {/* Prescription rows */}
+      {editMode ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {draft.map((row, i) => (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 60px 28px", gap: 6, alignItems: "center" }}>
+              <input placeholder="Drug name" value={row.drug} onChange={e => setCell(i, "drug", e.target.value)} style={{ ...inputSt, fontSize: 12 }} />
+              <input placeholder="Dose" value={row.dose} onChange={e => setCell(i, "dose", e.target.value)} style={{ ...inputSt, fontSize: 12 }} />
+              <input placeholder="Freq" value={row.freq} onChange={e => setCell(i, "freq", e.target.value)} style={{ ...inputSt, fontSize: 12 }} />
+              <input type="number" placeholder="Days" value={row.days} min={1} onChange={e => setCell(i, "days", parseInt(e.target.value) || 1)} style={{ ...inputSt, fontSize: 12 }} />
+              <button onClick={() => delRow(i)} style={{ ...iconBtnStyle, color: "#ef4444", fontSize: 16, padding: "2px 4px" }}>✕</button>
+            </div>
+          ))}
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 60px 28px", gap: 6 }}>
+            <span style={{ fontSize: 10, color: "var(--text-muted)", paddingLeft: 4 }}>Drug</span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Dose</span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Frequency</span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Days</span>
+          </div>
+          <button onClick={addRow} style={{ ...cancelBtnSt, fontSize: 12, alignSelf: "flex-start", marginTop: 2 }}>+ Add Drug</button>
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <button onClick={handleSaveEdit} disabled={saving} style={saveBtnSt}>
+              {saving ? "Saving…" : "Save Changes"}
+            </button>
+            <button onClick={() => setEditMode(false)} style={cancelBtnSt}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        rows.length > 0 ? (
+          <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: "var(--card-elevated)" }}>
+                  {["Drug", "Dose", "Frequency", "Days"].map(h => (
+                    <th key={h} style={{ padding: "8px 12px", fontSize: 10, fontWeight: 700, textAlign: "left", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => (
+                  <tr key={i} style={{ borderTop: "1px solid var(--border)", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)" }}>
+                    <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{row.drug}</td>
+                    <td style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>{row.dose}</td>
+                    <td style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{row.freq}</td>
+                    <td style={{ padding: "10px 12px", fontSize: 12, color: "var(--teal)", fontWeight: 700 }}>{row.days}d</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontSize: 13, border: "1px dashed var(--border)", borderRadius: 10 }}>
+            No prescription recorded. Click ✏️ Edit to add drugs.
+          </div>
+        )
+      )}
+
+      {/* Follow-up section */}
+      <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div>
+          <label style={labelSt}>Follow-up Notes</label>
+          <input
+            value={fuText}
+            onChange={e => setFuText(e.target.value)}
+            placeholder="e.g. 2 weeks, review BP"
+            style={{ ...inputSt, width: "100%", boxSizing: "border-box", fontSize: 12 }}
+            disabled={prescStatus === "approved"}
+          />
+        </div>
+        <div>
+          <label style={labelSt}>Follow-up Date</label>
+          <input
+            type="date"
+            value={fuDate}
+            onChange={e => setFuDate(e.target.value)}
+            style={{ ...inputSt, width: "100%", boxSizing: "border-box", fontSize: 12 }}
+            disabled={prescStatus === "approved"}
+          />
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171", fontSize: 12 }}>
+          ⚠ {error}
+        </div>
+      )}
+
+      {/* Approve / Reject — only show when pending */}
+      {prescStatus === "pending" && !editMode && (
+        <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
+          <button
+            data-testid="approve-prescription-btn"
+            onClick={handleApprove}
+            disabled={saving}
+            style={{
+              flex: 1, padding: "13px", borderRadius: 10, border: "none",
+              background: saving ? "var(--card-elevated)" : "rgba(16,185,129,0.85)",
+              color: "#fff", fontSize: 14, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer",
+              transition: "all 0.2s",
+            }}
+          >
+            {saving ? "…" : "✓ Approve & Send to Pharmacy"}
+          </button>
+          <button
+            data-testid="reject-prescription-btn"
+            onClick={() => setShowReject(true)}
+            style={{
+              padding: "13px 20px", borderRadius: 10,
+              border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.06)",
+              color: "#f87171", fontSize: 14, fontWeight: 700, cursor: "pointer",
+              transition: "all 0.2s",
+            }}
+          >
+            ✕ Reject
+          </button>
+        </div>
+      )}
+
+      {/* Reject modal */}
+      {showReject && (
+        <div style={{ marginTop: 12, padding: "14px", borderRadius: 10, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.05)" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#f87171", marginBottom: 8 }}>Rejection reason (optional)</div>
+          <input
+            value={rejectReason}
+            onChange={e => setRejectReason(e.target.value)}
+            placeholder="e.g. drug interaction, allergy noted"
+            style={{ ...inputSt, width: "100%", boxSizing: "border-box", fontSize: 12 }}
+          />
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button onClick={handleReject} disabled={saving} style={{ ...saveBtnSt, background: "#ef4444" }}>
+              {saving ? "…" : "Confirm Reject"}
+            </button>
+            <button onClick={() => setShowReject(false)} style={cancelBtnSt}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {prescStatus === "approved" && (
+        <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)", fontSize: 12, color: "#10b981", fontWeight: 600 }}>
+          ✓ Prescription approved and sent to pharmacy
+          {fuDate && <span style={{ color: "var(--text-secondary)", fontWeight: 400, marginLeft: 10 }}>· Follow-up: {fuDate}</span>}
+        </div>
+      )}
+      {prescStatus === "rejected" && (
+        <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", fontSize: 12, color: "#f87171", fontWeight: 600 }}>
+          ✕ Prescription rejected
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Shared styles ─────────────────────────────
+
+const inputSt = {
+  padding: "8px 10px", borderRadius: 8,
+  border: "1.5px solid var(--border)", background: "var(--input-bg)",
+  color: "var(--text-primary)", fontSize: 13, outline: "none", fontFamily: "inherit",
+};
+const labelSt = {
+  display: "block", fontSize: 11, color: "var(--text-muted)", fontWeight: 600,
+  textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5,
+};
+const iconBtnStyle = {
+  background: "transparent", border: "none", cursor: "pointer",
+  color: "var(--text-muted)", padding: "4px 6px", borderRadius: 6,
+  fontSize: 13, display: "inline-flex", alignItems: "center", gap: 4,
+  transition: "color 0.15s",
+};
+const saveBtnSt = {
+  padding: "7px 14px", borderRadius: 8, border: "none",
+  background: "var(--teal)", color: "#fff", fontSize: 12, fontWeight: 700,
+  cursor: "pointer",
+};
+const cancelBtnSt = {
+  padding: "7px 14px", borderRadius: 8,
+  border: "1px solid var(--border)", background: "transparent",
+  color: "var(--text-secondary)", fontSize: 12, fontWeight: 600,
+  cursor: "pointer",
+};
+
+// ── Divider ───────────────────────────────────
+
+function Divider({ label }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "20px 0 14px" }}>
+      <div style={{ height: 1, flex: 1, background: "var(--border)" }} />
+      <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>{label}</span>
+      <div style={{ height: 1, flex: 1, background: "var(--border)" }} />
+    </div>
+  );
+}
+
+// ── Main Dashboard ────────────────────────────
+
+export default function DoctorDashboard({ patientId, setPatientId }) {
+  const [patients, setPatients]   = useState([]);
+  const [selectedId, setSelectedId] = useState(patientId || "");
+  const [patient, setPatient]     = useState(null);
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState("");
+  const [urgencyChanging, setUrgencyChanging] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  // Fetch patient list for dropdown
   useEffect(() => {
-    if (patientId) { setSearchId(patientId); fetchPatient(patientId); }
-  }, [patientId]);
+    listPatients()
+      .then(setPatients)
+      .catch(() => {});
+  }, []);
+
+  // Load patient when selectedId changes
+  useEffect(() => {
+    if (!selectedId) return;
+    setLoading(true); setError("");
+    getPatient(selectedId)
+      .then(p => { setPatient(p); if (setPatientId) setPatientId(selectedId); })
+      .catch(e => setError(e.message || "Patient not found"))
+      .finally(() => setLoading(false));
+  }, [selectedId]);
+
+  const handleUrgencyChange = async (level) => {
+    if (!patient) return;
+    setUrgencyChanging(true);
+    try {
+      await updateUrgency(patient.patient_id, level);
+      setPatient(p => ({ ...p, urgency_level: level }));
+      setPatients(ps => ps.map(p => p.patient_id === selectedId ? { ...p, urgency_level: level } : p));
+    } catch (e) { setError(e.message); }
+    setUrgencyChanging(false);
+  };
+
+  const refreshPatient = () => {
+    if (!selectedId) return;
+    getPatient(selectedId).then(setPatient).catch(() => {});
+    listPatients().then(setPatients).catch(() => {});
+  };
+
+  const handleSaveNullField = async (field, value) => {
+    if (!patient) return;
+    try {
+      await saveRecord(patient.patient_id, { [field]: value });
+      setPatient(p => ({ ...p, [field]: value }));
+    } catch (e) { setError(e.message); }
+  };
 
   return (
     <div style={{ padding: "32px 0" }}>
+      {/* Header */}
       <div style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--teal)", fontWeight: 600, marginBottom: 6 }}>Clinical Record</div>
-        <h2 style={{ margin: 0, fontSize: 26, fontWeight: 700, color: "var(--text-primary)" }}>Doctor Dashboard</h2>
-        <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--text-muted)" }}>View the full structured record extracted from the voice consultation.</p>
+        <div style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--teal)", fontWeight: 600, marginBottom: 6 }}>
+          Clinical Records
+        </div>
+        <h2 style={{ margin: 0, fontSize: 26, fontWeight: 700, color: "var(--text-primary)" }}>
+          Doctor Dashboard
+        </h2>
+        <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--text-muted)" }}>
+          Select a patient, review AI-extracted record, edit and approve the prescription.
+        </p>
       </div>
 
       <div style={{ height: 1, background: "var(--border)", margin: "24px 0" }} />
 
-      {/* Search */}
-      <div style={{
-        display: "flex", gap: 10, marginBottom: 32,
-        background: "var(--card)",
-        border: `1.5px solid ${focused ? "var(--teal)" : "var(--border)"}`,
-        borderRadius: 12, padding: "6px 6px 6px 16px",
-        boxShadow: focused ? "0 0 0 3px rgba(20,184,166,0.12)" : "none",
-        transition: "all 0.2s",
-      }}>
-        <span style={{ fontSize: 18, color: "var(--text-muted)", display: "flex", alignItems: "center" }}>🔍</span>
-        <input
-          placeholder="Enter patient ID to look up…"
-          value={searchId}
-          onChange={e => setSearchId(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onKeyDown={e => e.key === "Enter" && fetchPatient(searchId)}
-          style={{
-            flex: 1, background: "transparent", border: "none",
-            outline: "none", fontSize: 14, color: "var(--text-primary)",
-            fontFamily: "var(--font-mono)",
-          }}
-        />
-        <button
-          onClick={() => fetchPatient(searchId)}
-          disabled={loading}
-          style={{
-            padding: "9px 20px", background: "var(--teal)", color: "#fff",
-            border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600,
-            cursor: "pointer", opacity: loading ? 0.7 : 1,
-          }}
-        >
-          {loading ? "Loading…" : "Fetch"}
-        </button>
-      </div>
-
-      {error && (
-        <div style={{
-          background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)",
-          borderRadius: 10, padding: "14px 18px", fontSize: 13, color: "#f87171", marginBottom: 24,
-        }}>⚠ {error}</div>
-      )}
-
-      {loading && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {[120, 200, 160].map((h, i) => (
-            <div key={i} style={{
-              height: h, borderRadius: 14,
-              background: "var(--card)", border: "1px solid var(--border)",
-              animation: "pulse-opacity 1.5s ease-in-out infinite",
-            }} />
-          ))}
-        </div>
-      )}
-
-      {!loading && patient && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, animation: "fadeSlideUp 0.35s ease" }}>
-
-          {/* Patient banner */}
-          <div style={{
-            background: "linear-gradient(135deg, rgba(20,184,166,0.12) 0%, rgba(20,184,166,0.04) 100%)",
-            border: "1px solid rgba(20,184,166,0.25)",
-            borderRadius: 14, padding: "20px 24px",
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-            flexWrap: "wrap", gap: 12,
-          }}>
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>{patient.name}</div>
-              <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 3 }}>
-                {patient.age} years · {LANG_LABELS[patient.language] || patient.language}
+      {/* Patient Dropdown */}
+      <div style={{ marginBottom: 28 }}>
+        <label style={{ ...labelSt, marginBottom: 8 }}>Select Patient</label>
+        <div style={{ position: "relative" }}>
+          <button
+            data-testid="patient-dropdown-btn"
+            onClick={() => setDropdownOpen(o => !o)}
+            style={{
+              width: "100%", padding: "12px 16px", borderRadius: 10,
+              border: `1.5px solid ${dropdownOpen ? "var(--teal)" : "var(--border)"}`,
+              background: "var(--input-bg)", color: "var(--text-primary)",
+              fontSize: 14, cursor: "pointer", textAlign: "left",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              boxShadow: dropdownOpen ? "0 0 0 3px rgba(20,184,166,0.15)" : "none",
+              transition: "border-color 0.2s, box-shadow 0.2s",
+            }}
+          >
+            {selectedId && patient ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <UrgencyBadge level={patient.urgency_level} />
+                <span style={{ fontWeight: 600 }}>{patient.name}</span>
+                <span style={{ color: "var(--text-muted)", fontSize: 12 }}>· Age {patient.age} · {LANGUAGES[patient.language] || patient.language}</span>
               </div>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Patient ID</div>
-              <div style={{
-                fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--teal)", fontWeight: 600,
-                background: "rgba(20,184,166,0.1)", padding: "4px 10px", borderRadius: 6,
-              }}>{patient.patient_id}</div>
-              {patient.created_at && (
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                  {new Date(patient.created_at).toLocaleString()}
+            ) : (
+              <span style={{ color: "var(--text-muted)" }}>— Choose a patient —</span>
+            )}
+            <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{dropdownOpen ? "▲" : "▼"}</span>
+          </button>
+
+          {dropdownOpen && (
+            <div style={{
+              position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 100,
+              background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12,
+              boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
+              maxHeight: 320, overflowY: "auto",
+            }}>
+              {patients.length === 0 ? (
+                <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+                  No patients registered yet.
                 </div>
+              ) : (
+                patients.map(p => (
+                  <button
+                    key={p.patient_id}
+                    data-testid={`patient-option-${p.patient_id.slice(0, 8)}`}
+                    onClick={() => { setSelectedId(p.patient_id); setDropdownOpen(false); }}
+                    style={{
+                      width: "100%", padding: "12px 16px", border: "none",
+                      background: selectedId === p.patient_id ? "rgba(20,184,166,0.08)" : "transparent",
+                      color: "var(--text-primary)", cursor: "pointer",
+                      display: "flex", alignItems: "center", gap: 10,
+                      borderBottom: "1px solid var(--border)",
+                      transition: "background 0.1s",
+                    }}
+                    onMouseEnter={e => { if (selectedId !== p.patient_id) e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
+                    onMouseLeave={e => { if (selectedId !== p.patient_id) e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <UrgencyBadge level={p.urgency_level} />
+                    <div style={{ flex: 1, textAlign: "left" }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+                        Age {p.age} · {LANGUAGES[p.language] || p.language}
+                        {p.diagnosis && <span> · {p.diagnosis}</span>}
+                      </div>
+                    </div>
+                    <div style={{
+                      fontSize: 10, padding: "2px 8px", borderRadius: 99, fontWeight: 700,
+                      background: PRESC_STATUS_STYLE[p.prescription_status]?.bg,
+                      color: PRESC_STATUS_STYLE[p.prescription_status]?.color,
+                      border: `1px solid ${PRESC_STATUS_STYLE[p.prescription_status]?.border}`,
+                    }}>
+                      {(p.prescription_status || "pending").toUpperCase()}
+                    </div>
+                  </button>
+                ))
               )}
             </div>
-          </div>
+          )}
+        </div>
+      </div>
 
-          {/* Two-col grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <SectionCard icon="🩺" title="Clinical Record" accent>
-              <InfoRow label="Diagnosis"   value={patient.diagnosis}  highlight />
-              <InfoRow label="ICD-10 Code" value={patient.icd10_code} mono highlight />
-              <InfoRow label="Symptoms"    value={patient.symptoms?.join(", ")} />
-              <InfoRow label="Follow-up"   value={patient.follow_up} />
-              <div style={{ paddingTop: 9 }}>
-                <span style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>Notes</span>
-                <span style={{ fontSize: 14, color: "var(--text-primary)", lineHeight: 1.6 }}>{patient.notes || "—"}</span>
-              </div>
-            </SectionCard>
-
-            <SectionCard icon="🏥" title="Department Status">
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {["pharmacy", "lab", "diagnostics"].map(dept => (
-                  <div key={dept} style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "10px 14px", background: "var(--card-elevated)", borderRadius: 8,
-                  }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", textTransform: "capitalize" }}>{dept}</span>
-                    <StatusPill value={patient.status?.[dept]} />
-                  </div>
-                ))}
-              </div>
-            </SectionCard>
-          </div>
-
-          {/* Prescription table */}
-          <SectionCard icon="💊" title="Prescription">
-            {patient.prescription?.length > 0 ? (
-              <div>
-                <div style={{
-                  display: "grid", gridTemplateColumns: "2fr 1fr 1fr 60px",
-                  gap: 8, padding: "6px 0 10px", borderBottom: "1px solid var(--border)", marginBottom: 4,
-                }}>
-                  {["Drug", "Dose", "Frequency", "Days"].map(h => (
-                    <span key={h} style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)" }}>{h}</span>
-                  ))}
-                </div>
-                {patient.prescription.map((p, i) => (
-                  <div key={i} style={{
-                    display: "grid", gridTemplateColumns: "2fr 1fr 1fr 60px",
-                    gap: 8, padding: "10px 0", alignItems: "center",
-                    borderBottom: i < patient.prescription.length - 1 ? "1px solid var(--border)" : "none",
-                  }}>
-                    <span style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: 14 }}>{p.drug}</span>
-                    <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{p.dose}</span>
-                    <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{p.freq}</span>
-                    <span style={{
-                      fontSize: 12, fontWeight: 600, color: "var(--teal)",
-                      background: "rgba(20,184,166,0.1)", padding: "3px 8px",
-                      borderRadius: 6, textAlign: "center",
-                    }}>{p.days}d</span>
-                  </div>
-                ))}
-              </div>
-            ) : <EmptyState icon="💊" message="No prescription issued" />}
-          </SectionCard>
-
-          {/* Lab tests */}
-          <SectionCard icon="🔬" title="Lab Tests Ordered">
-            {patient.lab_tests?.length > 0 ? (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {patient.lab_tests.map((test, i) => (
-                  <span key={i} style={{
-                    padding: "6px 14px", borderRadius: 20,
-                    background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.25)",
-                    color: "#818cf8", fontSize: 13, fontWeight: 500,
-                  }}>{test}</span>
-                ))}
-              </div>
-            ) : <EmptyState icon="🔬" message="No lab tests ordered" />}
-          </SectionCard>
-
+      {loading && (
+        <div style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
+          <span style={{ display: "inline-block", animation: "spin 0.8s linear infinite", fontSize: 20 }}>⟳</span>
         </div>
       )}
 
-      {!loading && !patient && !error && (
-        <EmptyState icon="🩺" message="Search for a patient ID above to view their record" />
+      {error && (
+        <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 8, padding: "12px 16px", color: "#f87171", fontSize: 13, marginBottom: 20 }}>
+          ⚠ {error}
+        </div>
+      )}
+
+      {/* ── Patient Record Panel ── */}
+      {patient && !loading && (
+        <div data-testid="patient-record-panel" style={{ animation: "fadeIn 0.2s ease" }}>
+
+          {/* Identity + Urgency */}
+          <div style={{
+            background: "var(--card)", border: "1px solid var(--border)", borderRadius: 14,
+            padding: "20px 24px", marginBottom: 20,
+            display: "flex", alignItems: "flex-start", gap: 20, flexWrap: "wrap",
+          }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text-primary)" }}>{patient.name}</div>
+              <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
+                Age {patient.age} · {LANGUAGES[patient.language] || patient.language}
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, marginLeft: 8, color: "var(--text-muted)" }}>
+                  {patient.patient_id.slice(0, 8)}…
+                </span>
+              </div>
+            </div>
+
+            {/* Urgency selector */}
+            <div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>
+                Urgency
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {URGENCY_LEVELS.map(u => (
+                  <button
+                    key={u.value}
+                    data-testid={`urgency-${u.value}`}
+                    onClick={() => handleUrgencyChange(u.value)}
+                    disabled={urgencyChanging}
+                    style={{
+                      padding: "5px 12px", borderRadius: 99, fontSize: 11, fontWeight: 700,
+                      border: `1.5px solid ${patient.urgency_level === u.value ? u.color : "var(--border)"}`,
+                      background: patient.urgency_level === u.value ? `${u.color}20` : "transparent",
+                      color: patient.urgency_level === u.value ? u.color : "var(--text-muted)",
+                      cursor: "pointer", transition: "all 0.15s",
+                    }}
+                  >
+                    {u.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Transcript (if exists) */}
+          {patient.transcript && (
+            <details style={{ marginBottom: 16, background: "var(--card-elevated)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px" }}>
+              <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", letterSpacing: "0.05em" }}>
+                VIEW ORIGINAL TRANSCRIPT
+              </summary>
+              <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
+                {patient.transcript}
+              </div>
+            </details>
+          )}
+
+          {/* Diagnosis section */}
+          <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 14, padding: "20px 24px", marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 14 }}>Clinical Findings</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <NullableField
+                label="Primary Diagnosis"
+                value={patient.diagnosis}
+                onSave={v => handleSaveNullField("diagnosis", v)}
+              />
+              <NullableField
+                label="ICD-10 Code"
+                value={patient.icd10_code}
+                onSave={v => handleSaveNullField("icd10_code", v)}
+              />
+            </div>
+
+            {/* Symptoms */}
+            <Divider label="Symptoms" />
+            {patient.symptoms?.length > 0 ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {patient.symptoms.map((s, i) => (
+                  <span key={i} style={{
+                    padding: "4px 10px", borderRadius: 99, fontSize: 12,
+                    background: "rgba(20,184,166,0.1)", border: "1px solid rgba(20,184,166,0.25)",
+                    color: "var(--teal)", fontWeight: 500,
+                  }}>{s}</span>
+                ))}
+              </div>
+            ) : (
+              <NullableField
+                label="Symptoms"
+                value={null}
+                onSave={v => handleSaveNullField("symptoms_json", v ? [v] : null)}
+              />
+            )}
+
+            {/* Secondary diagnoses */}
+            {(patient.secondary_diagnoses?.length > 0) && (
+              <>
+                <Divider label="Secondary Diagnoses" />
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {patient.secondary_diagnoses.map((d, i) => (
+                    <span key={i} style={{
+                      padding: "4px 10px", borderRadius: 99, fontSize: 12,
+                      background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.3)",
+                      color: "#a78bfa", fontWeight: 500,
+                    }}>{d}</span>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Lab tests */}
+            {(patient.lab_tests?.length > 0) && (
+              <>
+                <Divider label="Lab Tests Ordered" />
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {patient.lab_tests.map((t, i) => (
+                    <span key={i} style={{
+                      padding: "4px 10px", borderRadius: 99, fontSize: 12,
+                      background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)",
+                      color: "#60a5fa", fontWeight: 500,
+                    }}>{t}</span>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Notes */}
+            <Divider label="Notes" />
+            <NullableField
+              label="Doctor Notes"
+              value={patient.notes}
+              multiline
+              onSave={v => handleSaveNullField("notes", v)}
+            />
+
+            {/* Ambiguous terms */}
+            {patient.ambiguous_terms?.length > 0 && (
+              <>
+                <Divider label="Ambiguous Terms Resolved" />
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {patient.ambiguous_terms.map((t, i) => (
+                    <span key={i} style={{
+                      padding: "4px 10px", borderRadius: 99, fontSize: 11,
+                      background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)",
+                      color: "#f59e0b", fontFamily: "var(--font-mono)",
+                    }}>{t}</span>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Prescription */}
+          <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 14, padding: "20px 24px", marginBottom: 20 }}>
+            <PrescriptionEditor
+              prescription={patient.prescription}
+              patientId={patient.patient_id}
+              prescStatus={patient.prescription_status}
+              followUp={patient.follow_up}
+              followUpDate={patient.follow_up_date}
+              onSaved={refreshPatient}
+            />
+          </div>
+
+          {/* Department status */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+            {[
+              { key: "pharmacy",    label: "Pharmacy",    val: patient.status?.pharmacy    || "pending" },
+              { key: "lab",         label: "Lab",         val: patient.status?.lab         || "pending" },
+              { key: "diagnostics", label: "Diagnostics", val: patient.status?.diagnostics || "not_required" },
+            ].map(d => (
+              <div key={d.key} style={{ background: "var(--card-elevated)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>{d.label}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: d.val === "pending" ? "#f59e0b" : "#10b981" }}>
+                  {d.val.replace(/_/g, " ").toUpperCase()}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!patient && !loading && !error && (
+        <div style={{ textAlign: "center", padding: "60px 20px", color: "var(--text-muted)" }}>
+          <div style={{ fontSize: 48, opacity: 0.3, marginBottom: 14 }}>🩺</div>
+          <p style={{ fontSize: 14, margin: 0 }}>Select a patient from the dropdown to view their clinical record</p>
+        </div>
       )}
     </div>
   );
